@@ -57,11 +57,19 @@ def format_task(task: Dict) -> str:
     # Add project ID
     formatted += f"Project ID: {task.get('projectId', 'None')}\n"
     
+    # Add all-day flag if set
+    if task.get('isAllDay'):
+        formatted += "All Day: Yes\n"
+
     # Add dates if available
     if task.get('startDate'):
         formatted += f"Start Date: {task.get('startDate')}\n"
     if task.get('dueDate'):
         formatted += f"Due Date: {task.get('dueDate')}\n"
+
+    # Add reminders if available
+    if task.get('reminders'):
+        formatted += f"Reminders: {', '.join(task['reminders'])}\n"
     
     # Add priority if available
     priority_map = {0: "None", 1: "Low", 3: "Medium", 5: "High"}
@@ -213,16 +221,18 @@ async def get_task(project_id: str, task_id: str) -> str:
 
 @mcp.tool()
 async def create_task(
-    title: str, 
-    project_id: str, 
-    content: str = None, 
-    start_date: str = None, 
-    due_date: str = None, 
-    priority: int = 0
+    title: str,
+    project_id: str,
+    content: str = None,
+    start_date: str = None,
+    due_date: str = None,
+    priority: int = 0,
+    is_all_day: bool = False,
+    reminders: list[str] = None
 ) -> str:
     """
     Create a new task in TickTick.
-    
+
     Args:
         title: Task title
         project_id: ID of the project to add the task to
@@ -230,15 +240,17 @@ async def create_task(
         start_date: Start date in ISO format YYYY-MM-DDThh:mm:ss+0000 (optional)
         due_date: Due date in ISO format YYYY-MM-DDThh:mm:ss+0000 (optional)
         priority: Priority level (0: None, 1: Low, 3: Medium, 5: High) (optional)
+        is_all_day: If true, the task is an all-day task with no specific time (optional)
+        reminders: List of reminder triggers in iCalendar format, e.g. ["TRIGGER:PT0S"] for at due time, ["TRIGGER:-PT5M"] for 5 minutes before (optional)
     """
     if not ticktick:
         if not initialize_client():
             return "Failed to initialize TickTick client. Please check your API credentials."
-    
+
     # Validate priority
     if priority not in [0, 1, 3, 5]:
         return "Invalid priority. Must be 0 (None), 1 (Low), 3 (Medium), or 5 (High)."
-    
+
     try:
         # Validate dates if provided
         for date_str, date_name in [(start_date, "start_date"), (due_date, "due_date")]:
@@ -248,19 +260,21 @@ async def create_task(
                     datetime.fromisoformat(date_str.replace("Z", "+00:00"))
                 except ValueError:
                     return f"Invalid {date_name} format. Use ISO format: YYYY-MM-DDThh:mm:ss+0000"
-        
+
         task = ticktick.create_task(
             title=title,
             project_id=project_id,
             content=content,
             start_date=start_date,
             due_date=due_date,
-            priority=priority
+            priority=priority,
+            is_all_day=is_all_day,
+            reminders=reminders
         )
-        
+
         if 'error' in task:
             return f"Error creating task: {task['error']}"
-        
+
         return f"Task created successfully:\n\n" + format_task(task)
     except Exception as e:
         logger.error(f"Error in create_task: {e}")
@@ -274,11 +288,13 @@ async def update_task(
     content: str = None,
     start_date: str = None,
     due_date: str = None,
-    priority: int = None
+    priority: int = None,
+    is_all_day: bool = None,
+    reminders: list[str] = None
 ) -> str:
     """
     Update an existing task in TickTick.
-    
+
     Args:
         task_id: ID of the task to update
         project_id: ID of the project the task belongs to
@@ -287,15 +303,17 @@ async def update_task(
         start_date: New start date in ISO format YYYY-MM-DDThh:mm:ss+0000 (optional)
         due_date: New due date in ISO format YYYY-MM-DDThh:mm:ss+0000 (optional)
         priority: New priority level (0: None, 1: Low, 3: Medium, 5: High) (optional)
+        is_all_day: If true, the task is an all-day task with no specific time (optional)
+        reminders: List of reminder triggers in iCalendar format, e.g. ["TRIGGER:PT0S"] for at due time, ["TRIGGER:-PT5M"] for 5 minutes before (optional)
     """
     if not ticktick:
         if not initialize_client():
             return "Failed to initialize TickTick client. Please check your API credentials."
-    
+
     # Validate priority if provided
     if priority is not None and priority not in [0, 1, 3, 5]:
         return "Invalid priority. Must be 0 (None), 1 (Low), 3 (Medium), or 5 (High)."
-    
+
     try:
         # Validate dates if provided
         for date_str, date_name in [(start_date, "start_date"), (due_date, "due_date")]:
@@ -305,7 +323,7 @@ async def update_task(
                     datetime.fromisoformat(date_str.replace("Z", "+00:00"))
                 except ValueError:
                     return f"Invalid {date_name} format. Use ISO format: YYYY-MM-DDThh:mm:ss+0000"
-        
+
         task = ticktick.update_task(
             task_id=task_id,
             project_id=project_id,
@@ -313,7 +331,9 @@ async def update_task(
             content=content,
             start_date=start_date,
             due_date=due_date,
-            priority=priority
+            priority=priority,
+            is_all_day=is_all_day,
+            reminders=reminders
         )
         
         if 'error' in task:
